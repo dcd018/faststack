@@ -1,0 +1,296 @@
+{{- define "faststack.fullname" -}}
+  {{- if not .Values.useStandardNaming }}
+    {{- .Release.Name }}
+  {{- else if .Values.fullnameOverride }}
+    {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+  {{- else }}
+    {{- $name := default .Chart.Name .Values.nameOverride }}
+    {{- if contains $name .Release.Name }}
+      {{- .Release.Name | trunc 63 | trimSuffix "-" }}
+    {{- else }}
+      {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- define "faststack.serviceAccountName" -}}
+  {{ if .Values.fullnameOverride }}
+    {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+  {{- else }}
+    {{- $name := default .Chart.Name .Values.nameOverride }}
+    {{- if contains $name .Release.Name }}
+      {{- .Release.Name | trunc 63 | trimSuffix "-" }}
+    {{- else }}
+      {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- define "faststackPodSecurityContext" -}}
+  {{- $ := index . 0 -}}
+  {{- with index . 1 }}
+    {{- if .securityContexts.pod -}}
+      {{ toYaml .securityContexts.pod | print }}
+    {{- else if .securityContext -}}
+      {{ toYaml .securityContext | print }}
+    {{- else if $.Values.securityContexts.pod -}}
+      {{ toYaml $.Values.securityContexts.pod | print }}
+    {{- else if $.Values.securityContext -}}
+      {{ toYaml $.Values.securityContext | print }}
+    {{- else -}}
+runAsUser: {{ $.Values.uid }}
+fsGroup: {{ $.Values.gid }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- define "containerSecurityContext" -}}
+  {{- $ := index . 0 -}}
+  {{- with index . 1 }}
+    {{- if .securityContexts.container -}}
+      {{ toYaml .securityContexts.container | print }}
+    {{- else if $.Values.securityContexts.containers -}}
+      {{ toYaml $.Values.securityContexts.containers | print }}
+    {{- else -}}
+allowPrivilegeEscalation: false
+capabilities:
+  drop:
+    - ALL
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{- define "webserver.serviceAccountName" -}}
+  {{- if .Values.webserver.serviceAccount.create }}
+    {{- default (printf "%s-webserver" (include "faststack.serviceAccountName" .)) .Values.webserver.serviceAccount.name }}
+  {{- else }}
+    {{- default "default" .Values.webserver.serviceAccount.name }}
+  {{- end }}
+{{- end }}
+
+{{- define "faststack_config_path" -}}
+  {{- printf "%s/faststack.cfg" .Values.faststackHome | quote }}
+{{- end }}
+
+{{- define "faststack_webserver_config_path" -}}
+  {{- printf "%s/webserver_config.py" .Values.faststackHome | quote }}
+{{- end }}
+
+{{- define "faststack_config_mount" -}}
+- name: config
+  mountPath: {{ template "faststack_config_path" . }}
+  subPath: faststack.cfg
+  readOnly: true
+{{- end }}
+
+{{- define "faststack_webserver_config_mount" -}}
+- name: webserver-config
+  mountPath: {{ template "faststack_webserver_config_path" . }}
+  subPath: webserver_config.py
+  readOnly: True
+{{- end }}
+
+{{- define "wait-for-migrations-command" -}}
+  - faststack
+  - db
+  - check-migrations
+  - --migration-wait-timeout={{ .Values.images.migrationsWaitTimeout }}
+{{- end }}
+
+{{- define "custom_faststack_environment_from" }}
+  {{- $Global := . }}
+  {{- with .Values.extraEnvFrom }}
+    {{- tpl . $Global | nindent 2 }}
+  {{- end }}
+{{- end }}
+
+{{- define "custom_faststack_environment" }}
+  {{- range $i, $config := .Values.env }}
+  - name: {{ $config.name }}
+    value: {{ $config.value | quote }}
+  {{- end }}
+  {{- range $i, $config := .Values.secret }}
+  - name: {{ $config.envName }}
+    valueFrom:
+      secretKeyRef:
+        name: {{ $config.secretName }}
+        key: {{ default "value" $config.secretKey }}
+  {{- end }}
+  {{- $Global := . }}
+  {{- with .Values.extraEnv }}
+    {{- tpl . $Global | nindent 2 }}
+  {{- end }}
+{{- end }}
+
+{{- define "faststack_metadata_secret" -}}
+  {{- default (printf "%s-metadata" (include "faststack.fullname" .)) .Values.data.metadataSecretName }}
+{{- end }}
+
+{{- define "webserver_secret_key_secret" -}}
+  {{- default (printf "%s-webserver-secret-key" (include "faststack.fullname" .)) .Values.webserverSecretKeySecretName }}
+{{- end }}
+
+{{- define "standard_faststack_environment" }}
+  - name: FREQHUB_HOME
+    value: {{ .Values.faststackHome }}
+  {{- if .Values.enableBuiltInSecretEnvVars.FREQHUB__CORE__SQL_ALCHEMY_CONN }}
+  - name: FREQHUB__CORE__SQL_ALCHEMY_CONN
+    valueFrom:
+      secretKeyRef:
+        name: {{ template "faststack_metadata_secret" . }}
+        key: connection
+  {{- end }}
+  {{- if .Values.enableBuiltInSecretEnvVars.FREQHUB__DATABASE__SQL_ALCHEMY_CONN }}
+  - name: FREQHUB__DATABASE__SQL_ALCHEMY_CONN
+    valueFrom:
+      secretKeyRef:
+        name: {{ template "faststack_metadata_secret" . }}
+        key: connection
+  {{- end }}
+  {{- if .Values.enableBuiltInSecretEnvVars.FREQHUB_CONN_FREQHUB_DB }}
+  - name: FREQHUB_CONN_FREQHUB_DB
+    valueFrom:
+      secretKeyRef:
+        name: {{ template "faststack_metadata_secret" . }}
+        key: connection
+  {{- end }}
+  {{- if .Values.enableBuiltInSecretEnvVars.FREQHUB__WEBSERVER__SECRET_KEY }}
+  - name: FREQHUB__WEBSERVER__SECRET_KEY
+    valueFrom:
+      secretKeyRef:
+        name: {{ template "webserver_secret_key_secret" . }}
+        key: webserver-secret-key
+  {{- end }}
+{{- end }}
+
+{{- define "faststack_pod_template_file" -}}
+  {{- printf "%s/pod_templates" .Values.faststackHome }}
+{{- end }}
+
+{{- define "container_extra_envs" -}}
+  {{- $ := index . 0 -}}
+  {{- $env := index . 1 -}}
+  {{- range $i, $config := $env }}
+  - name: {{ $config.name }}
+    value: {{ $config.value | quote }}
+  {{- end }}
+{{- end }}
+
+{{- define "faststack_config" -}}
+  {{- printf "%s-config" (include "faststack.fullname" .) }}
+{{- end }}
+
+{{- define "faststack_webserver_config_configmap_name" -}}
+  {{- default (printf "%s-webserver-config" .Release.Name) .Values.webserver.webserverConfigConfigMapName }}
+{{- end }}
+
+{{- define "faststack_logs_volume_claim" -}}
+  {{- if .Values.logs.persistence.existingClaim }}
+    {{- .Values.logs.persistence.existingClaim }}
+  {{- else }}
+    {{- printf "%s-logs" .Release.Name }}
+  {{- end }}
+{{- end }}
+
+{{- define "faststack_logs" -}}
+  {{- printf "%s/logs" .Values.faststackHome | quote }}
+{{- end }}
+
+{{ define "default_faststack_image" -}}
+  {{- $repository := .Values.defaultFaststackRepository -}}
+  {{- $tag := .Values.defaultFaststackTag -}}
+  {{- $digest := .Values.defaultFaststackDigest -}}
+  {{- if $digest }}
+    {{- printf "%s@%s" $repository $digest -}}
+  {{- else }}
+    {{- printf "%s:%s" $repository $tag -}}
+  {{- end }}
+{{- end }}
+
+{{- define "faststack_image" -}}
+  {{- $repository := .Values.images.faststack.repository | default .Values.defaultFaststackRepository -}}
+  {{- $tag := .Values.images.faststack.tag | default .Values.defaultFaststackTag -}}
+  {{- $digest := .Values.images.faststack.digest | default .Values.defaultFaststackDigest -}}
+  {{- if $digest }}
+    {{- printf "%s@%s" $repository $digest -}}
+  {{- else }}
+    {{- printf "%s:%s" $repository $tag -}}
+  {{- end }}
+{{- end }}
+
+{{ define "faststack_image_for_migrations" -}}
+  {{- if .Values.images.useDefaultImageForMigration }}
+    {{- template "default_faststack_image" . }}
+  {{- else }}
+    {{- template "faststack_image" . }}
+  {{- end }}
+{{- end }}
+
+{{- define "registry_secret" -}}
+  {{- default (printf "%s-registry" (include "faststack.fullname" .)) .Values.registry.secretName }}
+{{- end }}
+
+{{- define "createUserJob.serviceAccountName" -}}
+  {{- if .Values.createUserJob.serviceAccount.create }}
+    {{- default (printf "%s-create-user-job" (include "faststack.serviceAccountName" .)) .Values.createUserJob.serviceAccount.name }}
+  {{- else }}
+    {{- default "default" .Values.createUserJob.serviceAccount.name }}
+  {{- end }}
+{{- end }}
+
+{{- define "migrateDatabaseJob.serviceAccountName" -}}
+  {{- if .Values.migrateDatabaseJob.serviceAccount.create }}
+    {{- default (printf "%s-migrate-database-job" (include "faststack.serviceAccountName" .)) .Values.migrateDatabaseJob.serviceAccount.name }}
+  {{- else }}
+    {{- default "default" .Values.migrateDatabaseJob.serviceAccount.name }}
+  {{- end }}
+{{- end }}
+
+{{- define "localPodSecurityContext" -}}
+  {{- if .securityContexts.pod -}}
+    {{ toYaml .securityContexts.pod | print }}
+  {{- else if .securityContext -}}
+    {{ toYaml .securityContext | print }}
+  {{- else -}}
+runAsUser: {{ .uid }}
+  {{- end -}}
+{{- end -}}
+
+{{- define "externalContainerSecurityContext" -}}
+  {{- if .securityContexts.container -}}
+    {{ toYaml .securityContexts.container | print }}
+  {{- else -}}
+allowPrivilegeEscalation: false
+capabilities:
+  drop:
+    - ALL
+  {{- end -}}
+{{- end -}}
+
+{{- define "pgbouncer.serviceAccountName" -}}
+  {{- if .Values.pgbouncer.serviceAccount.create }}
+    {{- default (printf "%s-pgbouncer" (include "faststack.serviceAccountName" .)) .Values.pgbouncer.serviceAccount.name }}
+  {{- else }}
+    {{- default "default" .Values.pgbouncer.serviceAccount.name }}
+  {{- end }}
+{{- end }}
+
+{{- define "pgbouncer_image" -}}
+  {{- printf "%s:%s" .Values.images.pgbouncer.repository .Values.images.pgbouncer.tag }}
+{{- end }}
+
+{{- define "pgbouncer_exporter_image" -}}
+  {{- printf "%s:%s" .Values.images.pgbouncerExporter.repository .Values.images.pgbouncerExporter.tag }}
+{{- end }}
+
+{{- define "pgbouncer_stats_secret" -}}
+  {{- default (printf "%s-pgbouncer-stats" (include "faststack.fullname" .)) .Values.pgbouncer.metricsExporterSidecar.statsSecretName }}
+{{- end }}
+
+{{- define "pgbouncer_config_secret" -}}
+  {{- default (printf "%s-pgbouncer-config" (include "faststack.fullname" .)) .Values.pgbouncer.configSecretName }}
+{{- end }}
+
+{{- define "pgbouncer_certificates_secret" -}}
+  {{- printf "%s-pgbouncer-certificates" (include "faststack.fullname" .) }}
+{{- end }}

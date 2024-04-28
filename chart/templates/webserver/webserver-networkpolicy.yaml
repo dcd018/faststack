@@ -1,0 +1,37 @@
+{{- if .Values.webserver.enabled }}
+{{- if .Values.networkPolicies.enabled }}
+{{- $from := or .Values.webserver.networkPolicy.ingress.from .Values.webserver.extraNetworkPolicies }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "faststack.fullname" . }}-webserver-policy
+  labels:
+    tier: faststack
+    component: faststack-webserver-policy
+    release: {{ .Release.Name }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    heritage: {{ .Release.Service }}
+    {{- if or (.Values.labels) (.Values.webserver.labels) }}
+      {{- mustMerge .Values.webserver.labels .Values.labels | toYaml | nindent 4 }}
+    {{- end }}
+spec:
+  podSelector:
+    matchLabels:
+      tier: faststack
+      component: webserver
+      release: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+  {{- if $from }}
+  ingress:
+    - from: {{- toYaml $from | nindent 6 }}
+      ports:
+      {{ range .Values.webserver.networkPolicy.ingress.ports }}
+        -
+          {{- range $key, $val := . }}
+          {{ $key }}: {{ tpl (toString $val) $ }}
+          {{- end }}
+      {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}

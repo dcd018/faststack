@@ -1,0 +1,238 @@
+{{- if .Values.webserver.enabled }}
+{{- $nodeSelector := or .Values.webserver.nodeSelector .Values.nodeSelector }}
+{{- $affinity := or .Values.webserver.affinity .Values.affinity }}
+{{- $tolerations := or .Values.webserver.tolerations .Values.tolerations }}
+{{- $topologySpreadConstraints := or .Values.webserver.topologySpreadConstraints .Values.topologySpreadConstraints }}
+{{- $revisionHistoryLimit := or .Values.webserver.revisionHistoryLimit .Values.revisionHistoryLimit }}
+{{- $securityContext := include "faststackPodSecurityContext" (list . .Values.webserver) }}
+{{- $containerSecurityContext := include "containerSecurityContext" (list . .Values.webserver) }}
+{{- $containerSecurityContextWaitForMigrations := include "containerSecurityContext" (list . .Values.webserver.waitForMigrations) }}
+{{- $containerLifecycleHooks := or .Values.webserver.containerLifecycleHooks .Values.containerLifecycleHooks }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "faststack.fullname" . }}-webserver
+  labels:
+    tier: faststack
+    component: webserver
+    release: {{ .Release.Name }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    heritage: {{ .Release.Service }}
+    {{- with .Values.labels }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- if .Values.webserver.annotations }}
+  annotations: {{- toYaml .Values.webserver.annotations | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.webserver.replicas }}
+  {{- if $revisionHistoryLimit }}
+  revisionHistoryLimit: {{ $revisionHistoryLimit }}
+  {{- end }}
+  strategy:
+    {{- if .Values.webserver.strategy }}
+    {{- toYaml .Values.webserver.strategy | nindent 4 }}
+    {{- else }}
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    {{- end }}
+  selector:
+    matchLabels:
+      tier: faststack
+      component: webserver
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        tier: faststack
+        component: webserver
+        release: {{ .Release.Name }}
+        {{- if or (.Values.labels) (.Values.webserver.labels) }}
+          {{- mustMerge .Values.webserver.labels .Values.labels | toYaml | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/metadata-secret: {{ include (print $.Template.BasePath "/secrets/metadata-connection-secret.yaml") . | sha256sum }}
+        checksum/pgbouncer-config-secret: {{ include (print $.Template.BasePath "/secrets/pgbouncer-config-secret.yaml") . | sha256sum }}
+        checksum/webserver-secret-key: {{ include (print $.Template.BasePath "/secrets/webserver-secret-key-secret.yaml") . | sha256sum }}
+        checksum/faststack-config: {{ include (print $.Template.BasePath "/configmaps/configmap.yaml") . | sha256sum }}
+        checksum/webserver-config: {{ include (print $.Template.BasePath "/configmaps/webserver-configmap.yaml") . | sha256sum }}
+        checksum/extra-configmaps: {{ include (print $.Template.BasePath "/configmaps/extra-configmaps.yaml") . | sha256sum }}
+        checksum/extra-secrets: {{ include (print $.Template.BasePath "/secrets/extra-secrets.yaml") . | sha256sum }}
+        {{- if .Values.faststackPodAnnotations }}
+          {{- toYaml .Values.faststackPodAnnotations | nindent 8 }}
+        {{- end }}
+        {{- if .Values.webserver.podAnnotations }}
+          {{- toYaml .Values.webserver.podAnnotations | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- if .Values.webserver.hostAliases }}
+      hostAliases: {{- toYaml .Values.webserver.hostAliases | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "webserver.serviceAccountName" . }}
+      {{- if .Values.webserver.priorityClassName }}
+      priorityClassName: {{ .Values.webserver.priorityClassName }}
+      {{- end }}
+      {{- if .Values.schedulerName }}
+      schedulerName: {{ .Values.schedulerName }}
+      {{- end }}
+      nodeSelector: {{- toYaml $nodeSelector | nindent 8 }}
+      affinity:
+        {{- if $affinity }}
+          {{- toYaml $affinity | nindent 8 }}
+        {{- else }}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  component: webserver
+              topologyKey: kubernetes.io/hostname
+            weight: 100
+        {{- end }}
+      tolerations: {{- toYaml $tolerations | nindent 8 }}
+      topologySpreadConstraints: {{- toYaml $topologySpreadConstraints | nindent 8 }}
+      restartPolicy: Always
+      securityContext: {{ $securityContext | nindent 8 }}
+      {{- if or .Values.registry.secretName .Values.registry.connection }}
+      imagePullSecrets:
+        - name: {{ template "registry_secret" . }}
+      {{- end }}
+      initContainers:
+        {{- if .Values.webserver.waitForMigrations.enabled }}
+        - name: wait-for-faststack-migrations
+          resources: {{- toYaml .Values.webserver.resources | nindent 12 }}
+          image: {{ template "faststack_image_for_migrations" . }}
+          imagePullPolicy: {{ .Values.images.faststack.pullPolicy }}
+          securityContext: {{ $containerSecurityContextWaitForMigrations | nindent 12 }}
+          volumeMounts:
+            {{- include "faststack_config_mount" . | nindent 12 }}
+            {{- if .Values.volumeMounts }}
+              {{- toYaml .Values.volumeMounts | nindent 12 }}
+            {{- end }}
+            {{- if .Values.webserver.extraVolumeMounts }}
+              {{- tpl (toYaml .Values.webserver.extraVolumeMounts) . | nindent 12 }}
+            {{- end }}
+            {{- if or .Values.webserver.webserverConfig .Values.webserver.webserverConfigConfigMapName }}
+              {{- include "faststack_webserver_config_mount" . | nindent 12 }}
+            {{- end }}
+          args: {{- include "wait-for-migrations-command" . | indent 10 }}
+          envFrom: {{- include "custom_faststack_environment_from" . | default "\n  []" | indent 10 }}
+          env:
+            {{- include "custom_faststack_environment" . | indent 10 }}
+            {{- include "standard_faststack_environment" . | indent 10 }}
+            {{- if .Values.webserver.waitForMigrations.env }}
+              {{- tpl (toYaml .Values.webserver.waitForMigrations.env) $ | nindent 12 }}
+            {{- end }}
+        {{- end }}
+        {{- if .Values.webserver.extraInitContainers }}
+          {{- toYaml .Values.webserver.extraInitContainers | nindent 8 }}
+        {{- end }}
+      containers:
+        - name: webserver
+          image: {{ template "faststack_image" . }}
+          imagePullPolicy: {{ .Values.images.faststack.pullPolicy }}
+          securityContext: {{ $containerSecurityContext | nindent 12 }}
+          {{- if $containerLifecycleHooks  }}
+          lifecycle: {{- tpl (toYaml $containerLifecycleHooks) . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.webserver.command }}
+          command: {{ tpl (toYaml .Values.webserver.command) . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.webserver.args }}
+          args: {{- tpl (toYaml .Values.webserver.args) . | nindent 12 }}
+          {{- end }}
+          resources: {{- toYaml .Values.webserver.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: {{ include "faststack_pod_template_file" . }}/pod_template_file.yaml
+              subPath: pod_template_file.yaml
+              readOnly: true
+            {{- include "faststack_config_mount" . | nindent 12 }}
+            {{- if or .Values.webserver.webserverConfig .Values.webserver.webserverConfigConfigMapName }}
+              {{- include "faststack_webserver_config_mount" . | nindent 12 }}
+            {{- end }}
+            {{- if .Values.logs.persistence.enabled }}
+            - name: logs
+              mountPath: {{ template "faststack_logs" . }}
+            {{- end }}
+            {{- if .Values.volumeMounts }}
+              {{- toYaml .Values.volumeMounts | nindent 12 }}
+            {{- end }}
+            {{- if .Values.webserver.extraVolumeMounts }}
+              {{- tpl (toYaml .Values.webserver.extraVolumeMounts) . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: faststack-ui
+              containerPort: {{ .Values.ports.faststackUI }}
+          livenessProbe:
+            httpGet:
+              path: {{ if .Values.config.webserver.base_url }}{{- with urlParse (tpl .Values.config.webserver.base_url .) }}{{ .path }}{{ end }}{{ end }}/health
+              port: {{ .Values.ports.faststackUI }}
+              {{- if .Values.config.webserver.base_url}}
+              httpHeaders:
+                - name: Host
+                  value: {{ regexReplaceAll ":\\d+$" (urlParse (tpl .Values.config.webserver.base_url .)).host  "" }}
+              {{- end }}
+              scheme: {{ .Values.webserver.livenessProbe.scheme | default "http" }}
+            initialDelaySeconds: {{ .Values.webserver.livenessProbe.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.webserver.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.webserver.livenessProbe.failureThreshold }}
+            periodSeconds: {{ .Values.webserver.livenessProbe.periodSeconds }}
+          readinessProbe:
+            httpGet:
+              path: {{ if .Values.config.webserver.base_url }}{{- with urlParse (tpl .Values.config.webserver.base_url .) }}{{ .path }}{{ end }}{{ end }}/health
+              port: {{ .Values.ports.faststackUI }}
+              {{- if .Values.config.webserver.base_url }}
+              httpHeaders:
+                - name: Host
+                  value: {{ regexReplaceAll ":\\d+$" (urlParse (tpl .Values.config.webserver.base_url .)).host  "" }}
+              {{- end }}
+              scheme: {{ .Values.webserver.readinessProbe.scheme | default "http" }}
+            initialDelaySeconds: {{ .Values.webserver.readinessProbe.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.webserver.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.webserver.readinessProbe.failureThreshold }}
+            periodSeconds: {{ .Values.webserver.readinessProbe.periodSeconds }}
+          startupProbe:
+            httpGet:
+              path: {{ if .Values.config.webserver.base_url }}{{- with urlParse (tpl .Values.config.webserver.base_url .) }}{{ .path }}{{ end }}{{ end }}/health
+              port: {{ .Values.ports.faststackUI }}
+              {{- if .Values.config.webserver.base_url}}
+              httpHeaders:
+                - name: Host
+                  value: {{ regexReplaceAll ":\\d+$" (urlParse (tpl .Values.config.webserver.base_url .)).host  "" }}
+              {{- end }}
+              scheme: {{ .Values.webserver.startupProbe.scheme | default "http" }}
+            timeoutSeconds: {{ .Values.webserver.startupProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.webserver.startupProbe.failureThreshold }}
+            periodSeconds: {{ .Values.webserver.startupProbe.periodSeconds }}
+          envFrom: {{- include "custom_faststack_environment_from" . | default "\n  []" | indent 10 }}
+          env:
+            {{- include "custom_faststack_environment" . | indent 10 }}
+            {{- include "standard_faststack_environment" . | indent 10 }}
+            {{- include "container_extra_envs" (list . .Values.webserver.env) | indent 10 }}
+        {{- if .Values.webserver.extraContainers }}
+          {{- toYaml .Values.webserver.extraContainers | nindent 8 }}
+        {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ template "faststack_config" . }}
+        {{- if or .Values.webserver.webserverConfig .Values.webserver.webserverConfigConfigMapName }}
+        - name: webserver-config
+          configMap:
+            name: {{ template "faststack_webserver_config_configmap_name" . }}
+        {{- end }}
+        {{- if .Values.logs.persistence.enabled }}
+        - name: logs
+          persistentVolumeClaim:
+            claimName: {{ template "faststack_logs_volume_claim" . }}
+        {{- end }}
+        {{- if .Values.volumes }}
+          {{- toYaml .Values.volumes | nindent 8 }}
+        {{- end }}
+        {{- if .Values.webserver.extraVolumes }}
+          {{- tpl (toYaml .Values.webserver.extraVolumes) . | nindent 8 }}
+        {{- end }}
+{{- end }}

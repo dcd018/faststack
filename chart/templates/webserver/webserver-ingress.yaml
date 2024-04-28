@@ -1,0 +1,91 @@
+{{- if .Values.webserver.enabled }}
+{{- if or .Values.ingress.web.enabled .Values.ingress.enabled }}
+{{- $fullname := (include "faststack.fullname" .) }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullname }}-ingress
+  labels:
+    tier: faststack
+    component: faststack-ingress
+    release: {{ .Release.Name }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    heritage: {{ .Release.Service }}
+    {{- if or (.Values.labels) (.Values.webserver.labels) }}
+      {{- mustMerge .Values.webserver.labels .Values.labels | toYaml | nindent 4 }}
+    {{- end }}
+  {{- with .Values.ingress.web.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if and .Values.ingress.web.hosts (.Values.ingress.web.hosts | first | kindIs "string" | not) }}
+  {{- $anyTlsHosts := false -}}
+  {{- range .Values.ingress.web.hosts }}
+  {{- if .tls }}
+  {{- if .tls.enabled }}
+  {{- $anyTlsHosts = true -}}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+  {{- if $anyTlsHosts }}
+  tls:
+  {{- range .Values.ingress.web.hosts }}
+  {{- if .tls }}
+  {{- if .tls.enabled }}
+    - hosts:
+        - {{ .name | quote }}
+      secretName: {{ .tls.secretName }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+  {{- else if .Values.ingress.web.tls.enabled }}
+  tls:
+    - hosts:
+        {{- .Values.ingress.web.hosts | default (list .Values.ingress.web.host) | toYaml | nindent 8 }}
+      secretName: {{ .Values.ingress.web.tls.secretName }}
+  {{- end }}
+  rules:
+    {{- range .Values.ingress.web.hosts | default (list .Values.ingress.web.host) }}
+    - http:
+        paths:
+          {{- range $.Values.ingress.web.precedingPaths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ .serviceName }}
+                port:
+                  name: {{ .servicePort }}
+          {{- end }}
+          - backend:
+              service:
+                name: {{ $fullname }}-webserver
+                port:
+                  name: faststack-ui
+            {{- if $.Values.ingress.web.path }}
+            path: {{ $.Values.ingress.web.path }}
+            pathType: {{ $.Values.ingress.web.pathType }}
+            {{- end }}
+          {{- range $.Values.ingress.web.succeedingPaths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ .serviceName }}
+                port:
+                  name: {{ .servicePort }}
+          {{- end }}
+      {{- $hostname := . -}}
+      {{- if . | kindIs "string" | not }}
+      {{- $hostname = .name -}}
+      {{- end }}
+      {{- if $hostname }}
+      host: {{ tpl $hostname $ | quote }}
+      {{- end }}
+    {{- end }}
+  {{- if .Values.ingress.web.ingressClassName }}
+  ingressClassName: {{ .Values.ingress.web.ingressClassName }}
+  {{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,22 @@
+{{- if and .Values.pgbouncer.enabled .Values.pgbouncer.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "faststack.fullname" . }}-pgbouncer-pdb
+  labels:
+    tier: faststack
+    component: pgbouncer
+    release: {{ .Release.Name }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    heritage: {{ .Release.Service }}
+    {{- with .Values.labels }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      tier: faststack
+      component: pgbouncer
+      release: {{ .Release.Name }}
+  {{- toYaml .Values.pgbouncer.podDisruptionBudget.config | nindent 2 }}
+{{- end }}

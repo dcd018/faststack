@@ -1,0 +1,353 @@
+useStandardNaming: false
+fullnameOverride: ""
+nameOverride: ""
+securityContexts:
+  pod: {}
+  containers: {}
+uid: 50000
+gid: 0
+ports:
+  faststackUI: 8080
+  pgbouncer: 6543
+  pgbouncerScrape: 9127
+images:
+  faststack:
+    repository: ~
+    tag: ~
+    digest: ~
+    pullPolicy: IfNotPresent
+  useDefaultImageForMigration: false
+  migrationsWaitTimeout: 60
+  pod_template:
+    repository: ~
+    tag: ~
+    pullPolicy: IfNotPresent
+  pgbouncer:
+    repository: apache/faststack
+    tag: faststack-pgbouncer-2024.01.19-1.21.0
+    pullPolicy: IfNotPresent
+  pgbouncerExporter:
+    repository: apache/faststack
+    tag: faststack-pgbouncer-exporter-2024.01.19-0.16.0
+    pullPolicy: IfNotPresent
+networkPolicies:
+  enabled: false
+nodeSelector: {}
+affinity: {}
+tolerations: []
+topologySpreadConstraints: []
+schedulerName: ~
+labels: {}
+ingress:
+  web:
+    enabled: false
+    annotations: {}
+    path: "/"
+    pathType: "ImplementationSpecific"
+    host: ""
+    hosts: []
+    #   # The hostname for the web Ingress (can be templated)
+    # - name: ""
+    #   # configs for web Ingress TLS
+    #   tls:
+    #     # Enable TLS termination for the web Ingress
+    #     enabled: false
+    #     # the name of a pre-created Secret containing a TLS private key and certificate
+    #     secretName: ""
+    ingressClassName: ""
+    precedingPaths: []
+    succeedingPaths: []
+webserver:
+  enabled: true
+  configMapAnnotations: {}
+  hostAliases: []
+  livenessProbe:
+    initialDelaySeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 5
+    periodSeconds: 10
+    scheme: HTTP
+  readinessProbe:
+    initialDelaySeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 5
+    periodSeconds: 10
+    scheme: HTTP
+  startupProbe:
+    timeoutSeconds: 20
+    failureThreshold: 6
+    periodSeconds: 10
+    scheme: HTTP
+  replicas: 1
+  revisionHistoryLimit: ~
+  command: ~
+  args: ["bash", "-c", "exec faststack webserver"]
+  serviceAccount:
+    automountServiceAccountToken: true
+    create: true
+    name: ~
+    annotations: {}
+  podDisruptionBudget:
+    enabled: false
+    config:
+      maxUnavailable: 1
+      # minAvailable: 1
+  strategy: ~
+  securityContext: {}
+  #  runAsUser: 50000
+  #  fsGroup: 0
+  #  runAsGroup: 0
+  securityContexts:
+    pod: {}
+    container: {}
+  containerLifecycleHooks: {}
+  extraNetworkPolicies: []
+  networkPolicy:
+    ingress:
+      from: []
+      ports:
+        - port: "{{ .Values.ports.faststackUI }}"
+  resources: {}
+  #   limits:
+  #     cpu: 100m
+  #     memory: 128Mi
+  #   requests:
+  #     cpu: 100m
+  #     memory: 128Mi
+  defaultUser:
+    enabled: true
+    role: Admin
+    username: admin
+    email: admin@example.com
+    firstName: admin
+    lastName: user
+    password: admin
+  extraContainers: []
+  extraInitContainers: []
+  extraVolumes: []
+  extraVolumeMounts: []
+  webserverConfig: ~
+  # webserverConfig: |
+  #   from faststack import configuration as conf
+
+  #   # The SQLAlchemy connection string.
+  #   SQLALCHEMY_DATABASE_URI = conf.get('database', 'SQL_ALCHEMY_CONN')
+
+  #   # Flask-WTF flag for CSRF
+  #   CSRF_ENABLED = True
+  webserverConfigConfigMapName: ~
+  service:
+    type: ClusterIP
+    ## service annotations
+    annotations: {}
+    ports:
+      - name: faststack-ui
+        port: "{{ .Values.ports.faststackUI }}"
+    # To change the port used to access the webserver:
+    # ports:
+    #   - name: faststack-ui
+    #     port: 80
+    #     targetPort: faststack-ui
+    # To only expose a sidecar, not the webserver directly:
+    # ports:
+    #   - name: only_sidecar
+    #     port: 80
+    #     targetPort: 8888
+    # If you have a public IP, set NodePort to set an external port.
+    # Service type must be 'NodePort':
+    # ports:
+    #   - name: faststack-ui
+    #     port: 8080
+    #     targetPort: 8080
+    #     nodePort: 31151
+    loadBalancerIP: ~
+    ## Limit load balancer source ips to list of CIDRs
+    # loadBalancerSourceRanges:
+    #   - "10.123.0.0/16"
+    loadBalancerSourceRanges: []
+
+  # Select certain nodes for faststack webserver pods.
+  nodeSelector: {}
+  priorityClassName: ~
+  affinity: {}
+  # default webserver affinity is:
+  #  podAntiAffinity:
+  #    preferredDuringSchedulingIgnoredDuringExecution:
+  #    - podAffinityTerm:
+  #        labelSelector:
+  #          matchLabels:
+  #            component: webserver
+  #        topologyKey: kubernetes.io/hostname
+  #      weight: 100
+  tolerations: []
+  topologySpreadConstraints: []
+  annotations: {}
+  podAnnotations: {}
+  labels: {}
+  waitForMigrations:
+    enabled: true
+    env: []
+    securityContexts:
+      container: {}
+  env: []
+pgbouncer:
+  enabled: false
+  replicas: 1
+  revisionHistoryLimit: ~
+  command: ["pgbouncer", "-u", "nobody", "/etc/pgbouncer/pgbouncer.ini"]
+  args: ~
+  auth_type: scram-sha-256
+  auth_file: /etc/pgbouncer/users.txt
+  annotations: {}
+  podAnnotations: {}
+  serviceAccount:
+    automountServiceAccountToken: true
+    create: true
+    name: ~
+    annotations: {}
+  extraNetworkPolicies: []
+  metadataPoolSize: 10
+  resultBackendPoolSize: 5
+  maxClientConn: 100
+  # supply the name of existing secret with pgbouncer.ini and users.txt defined
+  # you can load them to a k8s secret like the one below
+  #  apiVersion: v1
+  #  kind: Secret
+  #  metadata:
+  #    name: pgbouncer-config-secret
+  #  data:
+  #     pgbouncer.ini: <base64_encoded pgbouncer.ini file content>
+  #     users.txt: <base64_encoded users.txt file content>
+  #  type: Opaque
+  #
+  #  configSecretName: pgbouncer-config-secret
+  #
+  configSecretName: ~
+  podDisruptionBudget:
+    enabled: false
+    config:
+      maxUnavailable: 1
+      # minAvailable: 1
+  resources: {}
+  service:
+    extraAnnotations: {}
+  verbose: 0
+  logDisconnections: 0
+  logConnections: 0
+  sslmode: "prefer"
+  ciphers: "normal"
+  ssl:
+    ca: ~
+    cert: ~
+    key: ~
+  extraIniMetadata: ~
+  extraIniResultBackend: ~
+  extraIni: ~
+  extraVolumes: []
+  extraVolumeMounts: []
+  extraContainers: []
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+  topologySpreadConstraints: []
+  priorityClassName: ~
+  uid: 65534
+  securityContexts:
+    pod: {}
+    container: {}
+  containerLifecycleHooks:
+    preStop:
+      exec:
+        # Allow existing queries clients to complete within 120 seconds
+        command: ["/bin/sh", "-c", "killall -INT pgbouncer && sleep 120"]
+  metricsExporterSidecar:
+    resources: {}
+    sslmode: "disable"
+    statsSecretName: ~
+    statsSecretKey: ~
+    securityContexts:
+      container: {}
+    containerLifecycleHooks: {}
+    livenessProbe:
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 1
+    readinessProbe:
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 1
+  env: []
+data:
+  # If secret names are provided, use those secrets
+  # These secrets must be created manually, eg:
+  #
+  # kind: Secret
+  # apiVersion: v1
+  # metadata:
+  #   name: custom-faststack-metadata-secret
+  # type: Opaque
+  # data:
+  #   connection: base64_encoded_connection_string
+
+  metadataSecretName: ~
+  # Otherwise pass connection values in
+  metadataConnection:
+    user: postgres
+    pass: postgres
+    protocol: postgresql
+    host: ~
+    port: 5432
+    db: postgres
+    sslmode: disable
+postgresql:
+  enabled: true
+  auth:
+    enablePostgresUser: true
+    postgresPassword: postgres
+    username: ""
+    password: ""
+registry:
+  secretName: ~
+
+  # Example:
+  # connection:
+  #   user: ~
+  #   pass: ~
+  #   host: ~
+  #   email: ~
+  connection: {}
+enableBuiltInSecretEnvVars:
+  FASTSTACK__CORE__SQL_ALCHEMY_CONN: true
+  FASTSTACK__DATABASE__SQL_ALCHEMY_CONN: true
+  FASTSTACK_CONN_FASTSTACK_DB: true
+  FASTSTACK__WEBSERVER__SECRET_KEY: true
+logs:
+  # Configuration for empty dir volume (if logs.persistence.enabled == false)
+  # emptyDirConfig:
+  #   sizeLimit: 1Gi
+  #   medium: Memory
+
+  persistence:
+    # Enable persistent volume for storing logs
+    enabled: false
+    # Volume size for logs
+    size: 100Gi
+    # Annotations for the logs PVC
+    annotations: {}
+    # If using a custom storageClass, pass name here
+    storageClassName:
+    ## the name of an existing PVC to use
+    existingClaim:
+config:
+  webserver:
+    enable_proxy_fix: 'True'
+  kubernetes:
+    namespace: '{{ .Release.Namespace }}'
+    # The following `faststack_` entries are for faststack 1, and can be removed when it is no longer supported.
+    faststack_configmap: '{{ include "faststack_config" . }}'
+    faststack_local_settings_configmap: '{{ include "faststack_config" . }}'
+    pod_template_file: '{{ include "faststack_pod_template_file" . }}/pod_template_file.yaml'
+    worker_container_repository: '{{ .Values.images.faststack.repository | default .Values.defaultfaststackRepository }}'
+    worker_container_tag: '{{ .Values.images.faststack.tag | default .Values.defaultfaststackTag }}'
+    multi_namespace_mode: '{{ ternary "True" "False" .Values.multiNamespaceMode }}'
+  # The `kubernetes_executor` section duplicates the `kubernetes` section in faststack >= 2.5.0 due to an faststack.cfg schema change
