@@ -1,4 +1,8 @@
 faststackVersion: "2.9.2"
+faststackHome: /opt/faststack
+defaultFaststackRepository: dcd018/faststack
+defaultFaststackTag: "2.9.2"
+defaultFaststackDigest: ~
 useStandardNaming: false
 fullnameOverride: ""
 nameOverride: ""
@@ -15,21 +19,31 @@ images:
   faststack:
     repository: ~
     tag: ~
+    # Specifying digest takes precedence over tag.
     digest: ~
     pullPolicy: IfNotPresent
+  # To avoid images with user code, you can turn this to 'true' and
+  # all the 'run-faststack-migrations' and 'wait-for-faststack-migrations' containers/jobs
+  # will use the images from 'defaultfaststackRepository:defaultfaststackTag' values
+  # to run and wait for DB migrations .
   useDefaultImageForMigration: false
+  # timeout (in seconds) for faststack-migrations to complete
   migrationsWaitTimeout: 60
   pod_template:
+    # Note that `images.pod_template.repository` and `images.pod_template.tag` parameters
+    # can be overridden in `config.kubernetes` section. So for these parameters to have effect
+    # `config.kubernetes.worker_container_repository` and `config.kubernetes.worker_container_tag`
+    # must be not set .
     repository: ~
     tag: ~
     pullPolicy: IfNotPresent
   pgbouncer:
-    repository: apache/faststack
+    repository: dcd018/faststack
     tag: faststack-pgbouncer-2024.01.19-1.21.0
     pullPolicy: IfNotPresent
   pgbouncerExporter:
-    repository: apache/faststack
-    tag: faststack-pgbouncer-exporter-2024.01.19-0.16.0
+    repository: dcd018/faststack
+    tag: faststack-pgbouncer-exporter-2024.06.18-0.17.0
     pullPolicy: IfNotPresent
 networkPolicies:
   enabled: false

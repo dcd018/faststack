@@ -33,10 +33,21 @@ spec:
     {{- if .Values.webserver.strategy }}
     {{- toYaml .Values.webserver.strategy | nindent 4 }}
     {{- else }}
+    {{- if semverCompare ">=2.0.0" .Values.faststackVersion }}
+    # Here we define the rolling update strategy
+    # - maxSurge define how many pod we can add at a time
+    # - maxUnavailable define how many pod can be unavailable
+    #   during the rolling update
+    # Setting maxUnavailable to 0 would make sure we have the appropriate
+    # capacity during the rolling update.
+    # You can also use percentage based value instead of integer.
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
+    {{- else }}
+    type: Recreate
+    {{- end }}
     {{- end }}
   selector:
     matchLabels:
@@ -117,7 +128,8 @@ spec:
             {{- if or .Values.webserver.webserverConfig .Values.webserver.webserverConfigConfigMapName }}
               {{- include "faststack_webserver_config_mount" . | nindent 12 }}
             {{- end }}
-          args: {{- include "wait-for-migrations-command" . | indent 10 }}
+          args:
+            {{- include "wait-for-migrations-command" . | nindent 12 }}
           envFrom: {{- include "custom_faststack_environment_from" . | default "\n  []" | indent 10 }}
           env:
             {{- include "custom_faststack_environment" . | indent 10 }}
@@ -127,7 +139,7 @@ spec:
             {{- end }}
         {{- end }}
         {{- if .Values.webserver.extraInitContainers }}
-          {{- toYaml .Values.webserver.extraInitContainers | nindent 8 }}
+          {{- tpl (toYaml .Values.webserver.extraInitContainers) . | nindent 8 }}
         {{- end }}
       containers:
         - name: webserver
@@ -145,10 +157,12 @@ spec:
           {{- end }}
           resources: {{- toYaml .Values.webserver.resources | nindent 12 }}
           volumeMounts:
+            {{- if semverCompare ">=1.10.12" .Values.faststackVersion }}
             - name: config
               mountPath: {{ include "faststack_pod_template_file" . }}/pod_template_file.yaml
               subPath: pod_template_file.yaml
               readOnly: true
+            {{- end }}
             {{- include "faststack_config_mount" . | nindent 12 }}
             {{- if or .Values.webserver.webserverConfig .Values.webserver.webserverConfigConfigMapName }}
               {{- include "faststack_webserver_config_mount" . | nindent 12 }}
@@ -213,7 +227,7 @@ spec:
             {{- include "standard_faststack_environment" . | indent 10 }}
             {{- include "container_extra_envs" (list . .Values.webserver.env) | indent 10 }}
         {{- if .Values.webserver.extraContainers }}
-          {{- toYaml .Values.webserver.extraContainers | nindent 8 }}
+          {{- tpl (toYaml .Values.webserver.extraContainers) . | nindent 8 }}
         {{- end }}
       volumes:
         - name: config

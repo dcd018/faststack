@@ -131,31 +131,31 @@ capabilities:
 {{- end }}
 
 {{- define "standard_faststack_environment" }}
-  - name: FREQHUB_HOME
+  - name: FASTSTACK_HOME
     value: {{ .Values.faststackHome }}
-  {{- if .Values.enableBuiltInSecretEnvVars.FREQHUB__CORE__SQL_ALCHEMY_CONN }}
-  - name: FREQHUB__CORE__SQL_ALCHEMY_CONN
+  {{- if .Values.enableBuiltInSecretEnvVars.FASTSTACK__CORE__SQL_ALCHEMY_CONN }}
+  - name: FASTSTACK__CORE__SQL_ALCHEMY_CONN
     valueFrom:
       secretKeyRef:
         name: {{ template "faststack_metadata_secret" . }}
         key: connection
   {{- end }}
-  {{- if .Values.enableBuiltInSecretEnvVars.FREQHUB__DATABASE__SQL_ALCHEMY_CONN }}
-  - name: FREQHUB__DATABASE__SQL_ALCHEMY_CONN
+  {{- if .Values.enableBuiltInSecretEnvVars.FASTSTACK__DATABASE__SQL_ALCHEMY_CONN }}
+  - name: FASTSTACK__DATABASE__SQL_ALCHEMY_CONN
     valueFrom:
       secretKeyRef:
         name: {{ template "faststack_metadata_secret" . }}
         key: connection
   {{- end }}
-  {{- if .Values.enableBuiltInSecretEnvVars.FREQHUB_CONN_FREQHUB_DB }}
-  - name: FREQHUB_CONN_FREQHUB_DB
+  {{- if .Values.enableBuiltInSecretEnvVars.FASTSTACK_CONN_FASTSTACK_DB }}
+  - name: FASTSTACK_CONN_FASTSTACK_DB
     valueFrom:
       secretKeyRef:
         name: {{ template "faststack_metadata_secret" . }}
         key: connection
   {{- end }}
-  {{- if .Values.enableBuiltInSecretEnvVars.FREQHUB__WEBSERVER__SECRET_KEY }}
-  - name: FREQHUB__WEBSERVER__SECRET_KEY
+  {{- if .Values.enableBuiltInSecretEnvVars.FASTSTACK__WEBSERVER__SECRET_KEY }}
+  - name: FASTSTACK__WEBSERVER__SECRET_KEY
     valueFrom:
       secretKeyRef:
         name: {{ template "webserver_secret_key_secret" . }}
